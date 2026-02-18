@@ -6,8 +6,6 @@ main()
 {
     printf("---- CHILD TEST ----\n");
 
-    int parent = getpid();
-
     int pid1 = fork();
     if(pid1 == 0){
         pause(10);

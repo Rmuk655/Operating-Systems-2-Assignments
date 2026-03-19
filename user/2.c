@@ -26,8 +26,8 @@ main()
     int sc = getchildsyscount(pid1);
     printf("Child syscall count (valid child): %d\n", sc);
 
-    int invalid = getchildsyscount(9999);
-    printf("Invalid child syscall (expected -1): %d\n", invalid);
+    // int invalid = getchildsyscount(9999);
+    printf("Invalid child syscall (expected -1): %d\n", getchildsyscount(9999));
 
     wait(0);
     wait(0);

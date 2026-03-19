@@ -66,8 +66,47 @@ int sys_getchildsyscount()
     }
     release(&pi->lock);
   }
-  
+
   return ans;
+}
+
+uint64 sys_getlevel()
+{
+  acquire(&wait_lock);
+  int ans = myproc()->cur_queue_lvl;
+  release(&wait_lock);
+  return ans;
+}
+
+uint64 sys_getmlfqinfo()
+{
+  int pid;
+  uint64 uaddr;
+
+  argint(0, &pid);
+  argaddr(1, &uaddr);
+
+  struct mlfqinfo info;
+
+  for (struct proc *pi = proc; pi < &proc[NPROC]; pi++)
+  {
+    acquire(&pi->lock);
+    if (pi->pid == pid)
+    {
+      info.level = pi->cur_queue_lvl;
+      for (int i = 0; i < 4; i++)
+      {
+        info.ticks[i] = pi->ticks[i];
+      }
+      info.times_scheduled = pi->no_of_schedules;
+      info.total_syscalls = pi->syscount;
+      release(&pi->lock);
+      copyout(myproc()->pagetable, uaddr, (char *)&info, sizeof(info));
+      return 0;
+    }
+    release(&pi->lock);
+  }
+  return -1;
 }
 
 uint64

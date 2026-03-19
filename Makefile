@@ -152,6 +152,16 @@ UPROGS=\
 	$U/_C1\
 	$U/_C2\
 	$U/_C3\
+	$U/_1\
+	$U/_2\
+	$U/_3\
+	$U/_4\
+	$U/_A2_test_1\
+	$U/_A2_test_2\
+	$U/_A2_test_3\
+	$U/_PA2_1\
+	$U/_PA2_2\
+	$U/_PA2_3\
 
 fs.img: mkfs/mkfs README $(UPROGS)
 	mkfs/mkfs fs.img README $(UPROGS)

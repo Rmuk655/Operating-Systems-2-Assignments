@@ -14,7 +14,7 @@ int main()
     int pid = fork();
 
     if (pid == 0)
-    {
+    {   
         getpid();
         getpid();
         getpid();
@@ -29,7 +29,7 @@ int main()
 
     // Test 3: getchildsyscount() for invalid/non-child processes
     printf("C3 Test 3: getsyscount() for invalid/non-child processes\n");
-    printf("invalid pid result = %d\n", getchildsyscount(9999));
+    printf("invalid pid result = %d\n", getchildsyscount(9998));
     printf("non-child result   = %d\n", getchildsyscount(1));
 
     wait(0);

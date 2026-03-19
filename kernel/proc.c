@@ -6,6 +6,9 @@
 #include "proc.h"
 #include "defs.h"
 
+// MLFQ time slices per level
+int time_slice[4] = {2, 4, 8, 16};
+
 struct cpu cpus[NCPU];
 
 struct proc proc[NPROC];
@@ -79,7 +82,7 @@ mycpu(void)
 }
 
 // Return the current struct proc *, or zero if none.
-struct proc*
+struct proc *
 myproc(void)
 {
   push_off();
@@ -89,11 +92,10 @@ myproc(void)
   return p;
 }
 
-int
-allocpid()
+int allocpid()
 {
   int pid;
-  
+
   acquire(&pid_lock);
   pid = nextpid;
   nextpid = nextpid + 1;
@@ -129,6 +131,14 @@ found:
   p->pid = allocpid();
   p->state = USED;
   p->syscount = 0;
+  p->cur_queue_lvl = 0;
+  p->ticks_each_level = 0;
+  for (int i = 0; i <= 3; i++)
+  {
+    p->ticks[i] = 0;
+  }
+  p->no_of_schedules = 0;
+  p->temp = 0;
 
   // Allocate a trapframe page.
   if ((p->trapframe = (struct trapframe *)kalloc()) == 0)
@@ -458,24 +468,34 @@ void scheduler(void)
     intr_off();
 
     int found = 0;
-    for (p = proc; p < &proc[NPROC]; p++)
+    for (int level = 0; level <= 3; level++)
     {
-      acquire(&p->lock);
-      if (p->state == RUNNABLE)
+      for (p = proc; p < &proc[NPROC]; p++)
       {
-        // Switch to chosen process.  It is the process's job
-        // to release its lock and then reacquire it
-        // before jumping back to us.
-        p->state = RUNNING;
-        c->proc = p;
-        swtch(&c->context, &p->context);
+        acquire(&p->lock);
+        if (p->state == RUNNABLE && p->cur_queue_lvl == level)
+        {
+          // Switch to chosen process.  It is the process's job
+          // to release its lock and then reacquire it
+          // before jumping back to us.
+          p->state = RUNNING;
+          c->proc = p;
+          p->no_of_schedules++;
+          p->temp = p->syscount;
+          swtch(&c->context, &p->context);
 
-        // Process is done running for now.
-        // It should have changed its p->state before coming back.
-        c->proc = 0;
-        found = 1;
+          // Process is done running for now.
+          // It should have changed its p->state before coming back.
+          c->proc = 0;
+          found = 1;
+        }
+        release(&p->lock);
+
+        // if (found)
+        //   break;
       }
-      release(&p->lock);
+      // if (found)
+      //   break;
     }
     if (found == 0)
     {
@@ -483,6 +503,31 @@ void scheduler(void)
       asm volatile("wfi");
     }
   }
+}
+
+void priority_boost()
+{
+  int print = 1;
+  struct proc *p;
+  for (p = proc; p < &proc[NPROC]; p++)
+  {
+    acquire(&p->lock);
+    // push_off();
+    if (p->state == RUNNABLE)
+    {
+      if (print)
+      {
+        printf("Promoted process PID %d from current level %d to level 0\n", p->pid, p->cur_queue_lvl);
+        print = 0;
+      }
+      p->cur_queue_lvl = 0;
+      p->ticks_each_level = 0;
+      p->temp = p->syscount;
+      // printf("Boosting PID %d → level 0\n", p->pid);
+    }
+    release(&p->lock);
+  }
+  // pop_off();
 }
 
 // Switch to scheduler.  Must hold only p->lock

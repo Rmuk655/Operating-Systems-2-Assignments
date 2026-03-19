@@ -92,6 +92,7 @@ struct cpu*     mycpu(void);
 struct proc*    myproc();
 void            procinit(void);
 void            scheduler(void) __attribute__((noreturn));
+void            priority_boost();
 void            sched(void);
 void            sleep(void*, struct spinlock*);
 void            userinit(void);

@@ -30,6 +30,8 @@ int getppid(void);
 int getnumchild(void);
 int getsyscount();
 int getchildsyscount(int pi);
+int getlevel(void);
+int getmlfqinfo(int, struct mlfqinfo*);
 
 // ulib.c
 int stat(const char*, struct stat*);

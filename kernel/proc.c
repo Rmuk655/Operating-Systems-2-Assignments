@@ -490,12 +490,7 @@ void scheduler(void)
           found = 1;
         }
         release(&p->lock);
-
-        // if (found)
-        //   break;
       }
-      // if (found)
-      //   break;
     }
     if (found == 0)
     {
@@ -512,7 +507,6 @@ void priority_boost()
   for (p = proc; p < &proc[NPROC]; p++)
   {
     acquire(&p->lock);
-    // push_off();
     if (p->state == RUNNABLE)
     {
       if (print)
@@ -523,11 +517,9 @@ void priority_boost()
       p->cur_queue_lvl = 0;
       p->ticks_each_level = 0;
       p->temp = p->syscount;
-      // printf("Boosting PID %d → level 0\n", p->pid);
     }
     release(&p->lock);
   }
-  // pop_off();
 }
 
 // Switch to scheduler.  Must hold only p->lock

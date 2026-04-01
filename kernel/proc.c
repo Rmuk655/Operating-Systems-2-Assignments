@@ -17,6 +17,7 @@ struct proc *initproc;
 
 int nextpid = 1;
 struct spinlock pid_lock;
+struct spinlock wait_lock;
 
 extern void forkret(void);
 static void freeproc(struct proc *p);
@@ -27,7 +28,6 @@ extern char trampoline[]; // trampoline.S
 // parents are not lost. helps obey the
 // memory model when using p->parent.
 // must be acquired before any p->lock.
-struct spinlock wait_lock;
 
 // Allocate a page for each process's kernel stack.
 // Map it high in memory, followed by an invalid
@@ -59,6 +59,11 @@ void procinit(void)
     p->state = UNUSED;
     p->kstack = KSTACK((int)(p - proc));
     p->syscount = 0;
+    p->page_faults = 0;
+    p->pages_evicted = 0;
+    p->pages_swapped_in = 0;
+    p->pages_swapped_out = 0;
+    p->resident_pages = 0;
   }
 }
 
@@ -140,6 +145,12 @@ found:
   p->no_of_schedules = 0;
   p->temp = 0;
 
+  p->page_faults = 0;
+  p->pages_evicted = 0;
+  p->pages_swapped_in = 0;
+  p->pages_swapped_out = 0;
+  p->resident_pages = 0;
+
   // Allocate a trapframe page.
   if ((p->trapframe = (struct trapframe *)kalloc()) == 0)
   {
@@ -187,6 +198,12 @@ freeproc(struct proc *p)
   p->xstate = 0;
   p->syscount = 0;
   p->state = UNUSED;
+
+  p->page_faults = 0;
+  p->pages_evicted = 0;
+  p->pages_swapped_in = 0;
+  p->pages_swapped_out = 0;
+  p->resident_pages = 0;
 }
 
 // Create a user page table for a given process, with no user memory,
@@ -250,11 +267,11 @@ void userinit(void)
 }
 
 // Grow or shrink user memory by n bytes.
-// Return 0 on success, -1 on failure.
 int growproc(int n)
 {
   uint64 sz;
   struct proc *p = myproc();
+  uint64 old_sz = p->sz;
 
   sz = p->sz;
   if (n > 0)
@@ -267,6 +284,7 @@ int growproc(int n)
     {
       return -1;
     }
+    p->resident_pages += (sz - old_sz) / PGSIZE;
   }
   else if (n < 0)
   {

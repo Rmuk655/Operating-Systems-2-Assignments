@@ -1,3 +1,6 @@
+#ifndef TYPES_H
+#define TYPES_H
+
 typedef unsigned int   uint;
 typedef unsigned short ushort;
 typedef unsigned char  uchar;
@@ -16,3 +19,13 @@ struct mlfqinfo
   int times_scheduled; // number of times the process has been scheduled
   int total_syscalls;  // total system calls made (from PA1)
 };
+
+struct vmstats {
+  int page_faults;
+  int pages_evicted;
+  int pages_swapped_in;
+  int pages_swapped_out;
+  int resident_pages;
+};
+
+#endif // TYPES_H

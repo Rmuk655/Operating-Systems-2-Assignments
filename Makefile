@@ -145,23 +145,38 @@ UPROGS=\
 	$U/_logstress\
 	$U/_forphan\
 	$U/_dorphan\
-	$U/_A1\
-	$U/_A2\
-	$U/_B1\
-	$U/_B2\
-	$U/_C1\
-	$U/_C2\
-	$U/_C3\
-	$U/_1\
-	$U/_2\
-	$U/_3\
-	$U/_4\
-	$U/_A2_test_1\
-	$U/_A2_test_2\
-	$U/_A2_test_3\
-	$U/_PA2_1\
-	$U/_PA2_2\
-	$U/_PA2_3\
+	$U/_PA_3_1\
+	$U/_PA_3_2\
+	$U/_PA_3_3\
+	$U/_PA_3_4\
+	$U/_PA_3_5\
+	$U/_PA_3_6\
+	$U/_PA_3_7\
+	$U/_PA_3_8\
+	$U/_A\
+	$U/_B\
+	$U/_C\
+	$U/_D\
+	$U/_E\
+	$U/_F\
+	$U/_G\
+# 	$U/_A1\
+# 	$U/_A2\
+# 	$U/_B1\
+# 	$U/_B2\
+# 	$U/_C1\
+# 	$U/_C2\
+# 	$U/_C3\
+# 	$U/_1\
+# 	$U/_2\
+# 	$U/_3\
+# 	$U/_4\
+# 	$U/_A2_test_1\
+# 	$U/_A2_test_2\
+# 	$U/_A2_test_3\
+# 	$U/_PA2_1\
+# 	$U/_PA2_2\
+# 	$U/_PA2_3\
 
 fs.img: mkfs/mkfs README $(UPROGS)
 	mkfs/mkfs fs.img README $(UPROGS)

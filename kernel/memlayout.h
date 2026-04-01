@@ -57,3 +57,5 @@
 //   TRAPFRAME (p->trapframe, used by the trampoline)
 //   TRAMPOLINE (the same page as in the kernel)
 #define TRAPFRAME (TRAMPOLINE - PGSIZE)
+#define MAX_FRAMES 64
+#define MAX_SWAP 1024 // 4 MB swap file

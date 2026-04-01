@@ -72,8 +72,8 @@ usertrap(void)
   {
     // ok
   }
-  else if ((r_scause() == 15 || r_scause() == 13) &&
-           vmfault(p->pagetable, r_stval(), (r_scause() == 13) ? 1 : 0) != 0)
+  else if ((r_scause() == 15 || r_scause() == 13 || r_scause() == 12) &&
+           vmfault(p->pagetable, r_stval(), (r_scause() == 13 || r_scause() == 12) ? 1 : 0) != 0)
   {
     // page fault on lazily-allocated page
   }
@@ -118,17 +118,6 @@ usertrap(void)
 
       yield();
     }
-
-    // acquire(&tickslock);
-    // int no_of_ticks = ticks;
-    // release(&tickslock);
-
-    // static uint last_boost;
-    // if (no_of_ticks - last_boost >= 128)
-    // {
-    //   priority_boost();
-    //   last_boost = no_of_ticks;
-    // }
   }
 
   prepare_return();

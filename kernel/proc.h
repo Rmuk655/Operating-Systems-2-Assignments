@@ -123,4 +123,10 @@ struct proc
   int ticks[4];                // Total ticks per level
   int no_of_schedules;         // Number of times scheduled
   int temp;                    // Temporary storage for computing ΔS
+  // VM stats
+  int page_faults;             // Total page faults
+  int pages_evicted;           // Total pages evicted
+  int pages_swapped_in;        // Total pages swapped in
+  int pages_swapped_out;       // Total pages swapped out
+  int resident_pages;          // Current number of resident pages
 };

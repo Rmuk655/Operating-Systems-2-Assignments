@@ -109,6 +109,35 @@ uint64 sys_getmlfqinfo()
   return -1;
 }
 
+uint64 sys_getvmstats()
+{
+  int pid;
+  uint64 uaddr;
+
+  argint(0, &pid);
+  argaddr(1, &uaddr);
+
+  struct vmstats info;
+
+  for (struct proc *pi = proc; pi < &proc[NPROC]; pi++)
+  {
+    acquire(&pi->lock);
+    if (pi->pid == pid)
+    {
+      info.page_faults = pi->page_faults;
+      info.pages_evicted = pi->pages_evicted;
+      info.pages_swapped_in = pi->pages_swapped_in;
+      info.pages_swapped_out = pi->pages_swapped_out;
+      info.resident_pages = pi->resident_pages;
+      release(&pi->lock);
+      copyout(myproc()->pagetable, uaddr, (char *)&info, sizeof(info));
+      return 0;
+    }
+    release(&pi->lock);
+  }
+  return -1;
+}
+
 uint64
 sys_exit(void)
 {

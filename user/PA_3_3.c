@@ -21,7 +21,7 @@
 #include "user/user.h"
 
 #define PAGE_SIZE  4096
-#define MAXFRAMES  32
+#define MAXFRAMES  64
 #define HOT        4          // pages we keep touching (should stay resident)
 #define COLD_START HOT        // cold pages begin here
 #define COLD_COUNT (MAXFRAMES - HOT)   // fill rest of memory with cold pages

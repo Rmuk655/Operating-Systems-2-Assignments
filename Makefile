@@ -160,6 +160,7 @@ UPROGS=\
 	$U/_E\
 	$U/_F\
 	$U/_G\
+	$U/_runtests\
 # 	$U/_A1\
 # 	$U/_A2\
 # 	$U/_B1\

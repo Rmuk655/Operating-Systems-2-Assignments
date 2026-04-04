@@ -322,7 +322,7 @@ void uvmfree(pagetable_t pagetable, uint64 sz)
 // physical memory.
 // returns 0 on success, -1 on failure.
 // frees any allocated pages on failure.
-int uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
+int uvmcopy(pagetable_t old, pagetable_t new, uint64 sz, struct proc *child)
 {
   pte_t *pte;
   uint64 pa, i;
@@ -352,8 +352,8 @@ int uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
     pa = PTE2PA(*pte);
     flags = PTE_FLAGS(*pte);
     mem = (char *)get_frame();
-    // if ((mem = kalloc()) == 0)
-    if (mem == 0)
+    if ((mem = kalloc()) == 0)
+    // if (mem == 0)
       goto err;
     memmove(mem, (char *)pa, PGSIZE);
     if (mappages(new, i, PGSIZE, (uint64)mem, flags) != 0)
@@ -361,7 +361,8 @@ int uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
       kfree(mem);
       goto err;
     }
-    frametable_alloc((uint64)mem, myproc(), i);
+    // frametable_alloc((uint64)mem, myproc(), i);
+    frametable_alloc((uint64)mem, child, i);
   }
   return 0;
 

@@ -1,48 +1,208 @@
-xv6 is a re-implementation of Dennis Ritchie's and Ken Thompson's Unix
-Version 6 (v6).  xv6 loosely follows the structure and style of v6,
-but is implemented for a modern RISC-V multiprocessor using ANSI C.
+# xv6 Kernel Extensions
 
-ACKNOWLEDGMENTS
+Extended the xv6 operating system kernel across four progressive
+implementations covering system calls, scheduling, virtual memory
+management, and disk I/O subsystems — each building on the last.
 
-xv6 is inspired by John Lions's Commentary on UNIX 6th Edition (Peer
-to Peer Communications; ISBN: 1-57398-013-7; 1st edition (June 14,
-2000)).  See also https://pdos.csail.mit.edu/6.1810/, which provides
-pointers to on-line resources for v6.
+---
 
-The following people have made contributions: Russ Cox (context switching,
-locking), Cliff Frey (MP), Xiao Yu (MP), Nickolai Zeldovich, and Austin
-Clements.
+## Custom System Calls
 
-We are also grateful for the bug reports and patches contributed by
-Abhinavpatel00, Takahiro Aoyagi, Marcelo Arroyo, Hirbod Behnam, Silas
-Boyd-Wickizer, Anton Burtsev, carlclone, Ian Chen, clivezeng, Dan
-Cross, Cody Cutler, Mike CAT, Tej Chajed, Asami Doi,Wenyang Duan,
-echtwerner, eyalz800, Nelson Elhage, Saar Ettinger, Alice Ferrazzi,
-Nathaniel Filardo, flespark, Peter Froehlich, Yakir Goaron, Shivam
-Handa, Matt Harvey, Bryan Henry, jaichenhengjie, Jim Huang, Matúš
-Jókay, John Jolly, Alexander Kapshuk, Anders Kaseorg, kehao95,
-Wolfgang Keller, Jungwoo Kim, Jonathan Kimmitt, Eddie Kohler, Vadim
-Kolontsov, Austin Liew, l0stman, Pavan Maddamsetti, Imbar Marinescu,
-Yandong Mao, Matan Shabtay, Hitoshi Mitake, Carmi Merimovich,
-mes900903, Mark Morrissey, mtasm, Joel Nider, Hayato Ohhashi,
-OptimisticSide, papparapa, phosphagos, Harry Porter, Greg Price, Zheng
-qhuo, Quancheng, RayAndrew, Jude Rich, segfault, Ayan Shafqat, Eldar
-Sehayek, Yongming Shen, Fumiya Shigemitsu, snoire, Taojie, Cam Tenny,
-tyfkda, Warren Toomey, Stephen Tu, Alissa Tung, Rafael Ubal, unicornx,
-Amane Uehara, Pablo Ventura, Luc Videau, Xi Wang, WaheedHafez, Keiichi
-Watanabe, Lucas Wolf, Nicolas Wolovick, wxdao, Grant Wu, x653, Andy
-Zhang, Jindong Zhang, Icenowy Zheng, ZhUyU1997, and Zou Chang Wei.
+Extended xv6 with 7 new system calls following the full syscall
+flow end-to-end: user.h → usys.pl → syscall.h → syscall.c → sysproc.c.
 
-ERROR REPORTS
+### Process Identification
+- `hello()` — basic process-level system call
+- `getpid2()` — returns calling process PID
 
-Please send errors and suggestions to Frans Kaashoek and Robert Morris
-(kaashoek,rtm@mit.edu).  The main purpose of xv6 is as a teaching
-operating system for MIT's 6.1810, so we are more interested in
-simplifications and clarifications than new features.
+### Process Relationships
+- `getppid()` — returns parent PID (-1 if no valid parent)
+- `getnumchild()` — returns count of non-zombie child processes
 
-BUILDING AND RUNNING XV6
+### System Call Accounting
+- `getsyscount()` — returns syscall count of calling process
+- `getchildsyscount(int pid)` — returns syscall count of a child process
 
-You will need a RISC-V "newlib" tool chain from
-https://github.com/riscv/riscv-gnu-toolchain, and qemu compiled for
-riscv64-softmmu.  Once they are installed, and in your shell
-search path, you can run "make qemu".
+### Design
+- Per-process syscall counter added to `struct proc`
+- Counter incremented centrally in `void syscall()` in `syscall.c`
+- Zombie processes excluded from child count via state check
+- Existing xv6 locking reused for all shared kernel data access
+
+### Files Modified
+`kernel/proc.c`, `kernel/proc.h`, `kernel/syscall.c`,
+`kernel/syscall.h`, `kernel/sysproc.c`, `user/user.h`, `user/usys.pl`
+
+### Test Files
+`user/A1.c`, `user/A2.c`, `user/B1.c`, `user/B2.c`,
+`user/C1.c`, `user/C2.c`, `user/C3.c`
+
+---
+
+## System-Call-Aware Multi-Level Feedback Queue Scheduler
+
+Replaced xv6's default round-robin scheduler with a 4-level SC-MLFQ
+scheduler that distinguishes CPU-bound from interactive processes
+using syscall frequency.
+
+### Queue Structure
+
+| Level | Priority | Time Quantum |
+|-------|----------|--------------|
+| 0     | Highest  | 2 ticks      |
+| 1     | High     | 4 ticks      |
+| 2     | Medium   | 8 ticks      |
+| 3     | Lowest   | 16 ticks     |
+
+### Scheduling Policy
+- **Demotion**: process consuming full time quantum moves to next lower queue
+- **System-call-aware**: if ΔS (syscalls) ≥ ΔT (ticks), process is interactive and not demoted
+- **Global priority boost**: all RUNNABLE processes reset to Level 0 every 128 ticks to prevent starvation
+- **Round-robin** within each queue level
+
+### New System Calls
+- `getlevel()` — returns current MLFQ queue level of calling process
+- `getmlfqinfo(int pid, struct mlfqinfo *info)` — returns scheduling statistics (level, ticks[4], times_scheduled, total_syscalls)
+
+### Experimental Results
+- CPU-bound processes (ΔS=0) correctly demoted to Level 3
+- Syscall-heavy processes stayed at Level 0
+- Global boost confirmed at 128-tick intervals
+
+### Files Modified
+`kernel/proc.c`, `kernel/proc.h`, `kernel/syscall.c`,
+`kernel/syscall.h`, `kernel/sysproc.c`, `kernel/trap.c`,
+`kernel/types.h`, `user/user.h`, `user/usys.pl`, `Makefile`
+
+### Test Files
+`user/A2_test_1.c`, `user/A2_test_2.c`, `user/A2_test_3.c`
+
+---
+
+## Scheduler-Aware Page Replacement with Swap
+
+Extended xv6 virtual memory to support page eviction and swap
+instead of terminating processes on memory exhaustion.
+
+### Clock (Second-Chance) Page Replacement
+- Circular frame scan for victim selection
+- Reference bit = 0 → evict; Reference bit = 1 → reset and continue
+- Efficient LRU approximation
+
+### Swap Space Management
+- In-memory swap space (array-based)
+- On eviction: page contents stored in swap, PTE updated
+- On page fault: page restored from swap
+
+### Scheduler-Aware Eviction
+- Eviction prefers pages from lower-priority processes (higher MLFQ queue level)
+- Interactive processes retain memory longer
+
+### Per-Process Memory Statistics
+```c
+struct vmstats {
+  int page_faults;
+  int pages_evicted;
+  int pages_swapped_in;
+  int pages_swapped_out;
+  int resident_pages;
+};
+```
+
+### New System Call
+- `getvmstats(int pid, struct vmstats *info)` — returns per-process memory statistics
+
+### Files Modified
+`kernel/vm.c`, `kernel/trap.c`, `kernel/kalloc.c`,
+`kernel/proc.c`, `kernel/proc.h`, `kernel/vmstruct.h`
+
+### Test Files
+`user/PA_3_1.c` through `user/PA_3_8.c`, `user/runtests.c`
+
+---
+
+## Disk Scheduling and RAID-Backed Swap
+
+Replaced in-memory swap with a simulated disk layer, added disk
+request scheduling, and implemented RAID 0/1/5 across four
+simulated disks.
+
+### Disk-Backed Swap
+- Flat `slot_data[4096][PGSIZE]` array simulates disk surface (16MB)
+- `swap_out_page()` — evicts page to disk slot, submits block requests
+- `swap_in_page()` — restores page from disk slot
+- Per-slot RAID mode tracking ensures correct swap-in after mode changes
+- Slot zeroing on free prevents stale data reads on slot reuse
+
+### Disk Scheduling
+Request queue holds up to 128 pending requests.
+
+- **FCFS (policy=0)**: requests served in arrival order
+- **SSTF (policy=1)**: closest request to current head served next; MLFQ priority used as tiebreaker
+
+Latency model: `latency = |current_head - requested_block| + 5`
+
+**New System Call**: `setdisksched(int policy)`
+
+### RAID Simulation
+
+**RAID 0 (striping)**: logical block `b` → disk `b%4`, physical block `b/4`
+
+**RAID 1 (mirroring)**: two mirror pairs; each write goes to both disks;
+reads from primary disk of the pair
+
+**RAID 5 (striping + parity)**: rotating parity disk per stripe row;
+parity recomputed from scratch via XOR of all 3 data disks — correctly
+handles repeated writes to the same stripe row
+
+### Experimental Results
+
+| Mode   | Data Errors | Disk Writes |
+|--------|-------------|-------------|
+| RAID 0 | 0 / 85      | 490         |
+| RAID 1 | 0 / 85      | 825         |
+| RAID 5 | 0 / 85      | 445         |
+
+All 6 scheduler × RAID combinations passed with zero errors.
+RAID 1 shows ~2× writes vs RAID 0, consistent with mirroring.
+
+### Files Modified
+`kernel/swap_disk.c` (new), `kernel/swap_disk.h` (new),
+`kernel/kalloc.c`, `kernel/defs.h`, `kernel/memlayout.h`,
+`kernel/main.c`, `kernel/sysproc.c`
+
+### Test Files
+`user/PA4_1.c` through `user/PA4_8.c`
+
+---
+
+## How to Run
+
+```bash
+make clean
+make qemu
+```
+
+Run any test program from the xv6 shell:
+```bash
+A1
+A2_test_1
+PA_3_1
+PA4_1
+```
+
+---
+
+## Full List of Modified Files
+
+| File | Changes |
+|------|---------|
+| `kernel/vm.c` | Page table management and swap logic |
+| `kernel/trap.c` | Page fault handling, timer-based scheduling |
+| `kernel/kalloc.c` | Frame allocation, Clock eviction, swap integration |
+| `kernel/proc.c/h` | Process metadata, MLFQ fields, memory stats |
+| `kernel/swap_disk.c` | Disk scheduler, RAID mapping, flat slot storage |
+| `kernel/syscall.c/h` | System call registration |
+| `kernel/sysproc.c` | All system call implementations |
+| `kernel/types.h` | `struct mlfqinfo`, `struct vmstats` |
+| `kernel/vmstruct.h` | VM statistics structure |

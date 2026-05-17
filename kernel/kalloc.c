@@ -20,9 +20,10 @@ struct spinlock framelock;
 int clock_hand = 0;    // for clock algorithm
 int active_frames = 0; // number of frames currently allocated to processes
 
-struct swap swaptable[MAX_SWAP];  // 1D array for metadata
-char swap_data[MAX_SWAP][PGSIZE]; // 2D array for the 4KB pages
+struct swap swaptable[MAX_SWAP]; // 1D array for metadata
+// char swap_data[MAX_SWAP][PGSIZE]; // 2D array for the 4KB pages
 struct spinlock swaplock;
+extern int raid_mode;
 
 struct run
 {
@@ -76,6 +77,9 @@ void kfree(void *pa)
   if (((uint64)pa % PGSIZE) != 0 || (char *)pa < end || (uint64)pa >= PHYSTOP)
     panic("kfree");
 
+  // YOU MUST RESTORE THIS LINE:
+  frametablefree((uint64)pa);
+
   // Fill with junk to catch dangling refs.
   memset(pa, 1, PGSIZE);
 
@@ -124,6 +128,15 @@ uint64 clock_evict()
     uint64 va = frametable[clock_hand].va;
     if (p != 0)
     {
+      // ADD THESE 3 LINES:
+      // If the process is actively running on another CPU, DO NOT evict its pages!
+      // This entirely prevents cross-core TLB desynchronization.
+      if (p->state == RUNNING && p != myproc())
+      {
+        clock_hand = (clock_hand + 1) % MAX_FRAMES;
+        loops++;
+        continue;
+      }
       pte_t *pte = walk(p->pagetable, va, 0);
       if (pte != 0 && ((*pte) & PTE_V))
       {
@@ -149,26 +162,74 @@ uint64 clock_evict()
   {
     for (int i = 0; i < MAX_FRAMES; i++)
     {
-      if (frametable[i].proc != 0)
+      struct proc *pp = frametable[i].proc;
+      if (pp != 0 && !(pp->state == RUNNING && pp != myproc()))
       {
         best_idx = i;
         break;
       }
+      // if (frametable[i].proc != 0)
+      // {
+      //   best_idx = i;
+      //   break;
+      // }
     }
+  }
+
+  // CRITICAL FIX: Catch gridlock! If all frames are running on other CPUs,
+  // gracefully deny the memory request instead of reading frametable[-1].
+  if (best_idx == -1)
+  {
+    release(&framelock);
+    return 0;
   }
 
   clock_hand = (best_idx + 1) % MAX_FRAMES;
 
-  // release(&framelock);
-  swapout(frametable[best_idx].proc->pagetable, frametable[best_idx].va);
-  // acquire(&framelock);
-  frametable[best_idx].proc->pages_evicted++;
-  frametable[best_idx].proc->pages_swapped_out++;
-  frametable[best_idx].proc->resident_pages--; // Decrement resident page count for the owning process
+  // 1. Save metadata locally
+  struct proc *victim_p = frametable[best_idx].proc;
+  uint64 victim_va = frametable[best_idx].va;
+
+  // 2. Hide the frame! This prevents double-evictions by other CPUs
+  frametable[best_idx].proc = 0;
+
+  // 3. Drop lock and do expensive disk I/O
+  release(&framelock);
+  int swap_ret = swapout(victim_p->pagetable, victim_va);
+
+  // 4. Check if swap space was completely full
+  if (swap_ret == -1)
+  {
+    // Revert the hidden frame and fail gracefully
+    acquire(&framelock);
+    frametable[best_idx].proc = victim_p;
+    release(&framelock);
+    return 0;
+  }
+
+  // 5. Reacquire lock and update stats safely
+  acquire(&framelock);
+  if (victim_p)
+  {
+    victim_p->pages_evicted++;
+    victim_p->pages_swapped_out++;
+    victim_p->resident_pages--;
+  }
 
   frametable[best_idx].used = 0;
-  frametable[best_idx].proc = 0;
+  active_frames--;
   release(&framelock);
+
+  // release(&framelock);
+  // swapout(frametable[best_idx].proc->pagetable, frametable[best_idx].va);
+  // // acquire(&framelock);
+  // frametable[best_idx].proc->pages_evicted++;
+  // frametable[best_idx].proc->pages_swapped_out++;
+  // frametable[best_idx].proc->resident_pages--; // Decrement resident page count for the owning process
+
+  // frametable[best_idx].used = 0;
+  // frametable[best_idx].proc = 0;
+  // release(&framelock);
 
   return frametable[best_idx].pa;
 }
@@ -192,10 +253,12 @@ void frametable_alloc(uint64 pa, struct proc *p, uint64 va)
       // swapout(p->pagetable, va); // swap out the page currently in this frame if necessary
       // acquire(&framelock);
       frametable[i].used = 1;
+      active_frames++;
       frametable[i].proc = p;
       frametable[i].va = va;
       frametable[i].pa = pa;
-      p->resident_pages++; // Increment the process's resident page counter
+      if (p)
+        p->resident_pages++; // Increment the process's resident page counter
       // frametable[i].ref_bit = 1;
       allocate = 1;
       release(&framelock);
@@ -204,8 +267,13 @@ void frametable_alloc(uint64 pa, struct proc *p, uint64 va)
   }
   if (!allocate)
   {
-    release(&framelock);
-    panic("frametable_alloc: no free frame available");
+    uint64 victim_pa = clock_evict();
+    if (victim_pa == 0)
+      panic("frametable_alloc: complete gridlock");
+    kfree((void *)victim_pa);
+    frametable_alloc(pa, p, va);
+    // release(&framelock);
+    // panic("frametable_alloc: no free frame available");
   }
 
   // if (allocate == 0)
@@ -231,12 +299,13 @@ void frametablefree(uint64 pa)
     if (frametable[i].pa == pa && frametable[i].used)
     {
       struct proc *p = frametable[i].proc;
-      p->resident_pages--; // Decrement the process's resident page counter
+      // p->resident_pages--; // Decrement the process's resident page counter
       frametable[i].used = 0;
       frametable[i].proc = 0;
       frametable[i].va = 0;
       frametable[i].pa = 0;
-      if(p){
+      if (p)
+      {
         p->resident_pages--; // Decrement the process's resident page counter for the owning process
       }
       active_frames--;
@@ -244,6 +313,31 @@ void frametablefree(uint64 pa)
     }
   }
   release(&framelock);
+}
+
+void tlb_flush_all(void)
+{
+  sfence_vma();
+
+  int my_hart = cpuid();
+  for (int i = 0; i < NCPU; i++)
+  {
+    if (i != my_hart)
+    {
+      *(uint32 *)(CLINT + 4 * i) = 1;
+    }
+  }
+
+  for (volatile int i = 0; i < 1000; i++)
+    ;
+
+  for (int i = 0; i < NCPU; i++)
+  {
+    if (i != my_hart)
+    {
+      *(uint32 *)(CLINT + 4 * i) = 0;
+    }
+  }
 }
 
 int swapout(pagetable_t pt, uint64 va)
@@ -270,25 +364,40 @@ int swapout(pagetable_t pt, uint64 va)
       swaptable[i].page_table = pt;
       swaptable[i].va = va;
       // swaptable[i].frame_idx = ; // (Optional: if you still need this)
+      swaptable[i].raid_mode = raid_mode;
       swap_idx = i;
       break;
     }
   }
 
+  release(&swaplock);
+
   if (swap_idx == -1)
   {
-    release(&swaplock);
-    panic("swapout: out of swap space");
+    // release(&swaplock);
+    // panic("swapout: out of swap space");
+    return -1;
   }
 
   // 3. Copy the 4096 bytes of memory into your 2D data array
-  memmove((void *)swap_data[swap_idx], (void *)pa, PGSIZE);
-  release(&swaplock);
+  // memmove((void *)swap_data[swap_idx], (void *)pa, PGSIZE);
+  // release(&swaplock);
+
+  // ← REPLACE memmove into swap_data with disk write
+  swap_out_page((char *)pa, swap_idx);
+
+  struct proc *p = myproc();
+  if (p)
+  {
+    p->disk_writes++;
+    p->avg_disk_latency = disk_get_avg_latency();
+  }
 
   uint flags = PTE_FLAGS(*pte);
   *pte = (swap_idx << 10) | PTE_S | (flags & ~PTE_V);
   // *pte = (*pte & ~PTE_V) | PTE_S; // Mark the page as swapped out and not valid
-  sfence_vma(); // Flush TLB to ensure the change takes effect
+  // sfence_vma();
+  tlb_flush_all(); // Flush TLB to ensure the change takes effect
   return swap_idx;
 }
 
@@ -301,10 +410,22 @@ void swapin(uint64 pa, int swap_idx)
     release(&swaplock);
     panic("swapin: invalid swap index or slot not in use");
   }
+  int stored_raid_mode = swaptable[swap_idx].raid_mode;
+  release(&swaplock);
 
   // Restore the data
-  memmove((void *)pa, (void *)swap_data[swap_idx], PGSIZE);
-  release(&swaplock);
+  // memmove((void *)pa, (void *)swap_data[swap_idx], PGSIZE);
+  // release(&swaplock);
+
+  // ← REPLACE memmove from swap_data with disk read
+  swap_in_page((char *)pa, swap_idx, stored_raid_mode);
+
+  struct proc *p = myproc();
+  if (p)
+  {
+    p->disk_reads++;
+    p->avg_disk_latency = disk_get_avg_latency();
+  }
 
   // Free the swap slot
   swap_free(swap_idx);
@@ -319,7 +440,9 @@ void swap_free(int swap_idx)
     swaptable[swap_idx].used = 0;
     swaptable[swap_idx].page_table = 0;
     swaptable[swap_idx].va = 0;
+    swaptable[swap_idx].raid_mode = 0;
     // No need to memset the data, it will be overwritten next time
+    swap_disk_free_slot(swap_idx);
   }
   release(&swaplock);
 }

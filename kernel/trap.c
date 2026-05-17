@@ -32,7 +32,7 @@ void trapinithart(void)
 //
 // handle an interrupt, exception, or system call from user space.
 // called from, and returns to, trampoline.S
-// return value is user satp for trampoline.S to switch to.
+// return value is user satp (page table register) for trampoline.S to switch to.
 //
 uint64
 usertrap(void)
@@ -71,6 +71,12 @@ usertrap(void)
   else if ((which_dev = devintr()) != 0)
   {
     // ok
+  }
+  else if (r_scause() == 0x8000000000000001L)
+  {
+    // ADD THIS: Handle TLB shootdown IPI gracefully from user space!
+    *(uint32 *)(CLINT + 4 * cpuid()) = 0;
+    sfence_vma();
   }
   else if ((r_scause() == 15 || r_scause() == 13 || r_scause() == 12) &&
            vmfault(p->pagetable, r_stval(), (r_scause() == 13 || r_scause() == 12) ? 1 : 0) != 0)
@@ -179,6 +185,14 @@ void kerneltrap()
   if (intr_get() != 0)
     panic("kerneltrap: interrupts enabled");
 
+  if (scause == 0x8000000000000001L)
+  {
+    *(uint32 *)(CLINT + 4 * cpuid()) = 0;
+    sfence_vma();
+    w_sepc(sepc);
+    w_sstatus(sstatus);
+    return;
+  }
   if ((which_dev = devintr()) == 0)
   {
     // interrupt or trap from an unknown source

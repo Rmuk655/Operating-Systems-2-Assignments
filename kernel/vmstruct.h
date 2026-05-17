@@ -13,6 +13,7 @@ struct swap {
     uint64 page_table_ptr; 
 #endif
     uint64 va;
+    int raid_mode;
 };
 
 struct proc;

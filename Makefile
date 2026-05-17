@@ -28,7 +28,8 @@ OBJS = \
   $K/sysfile.o \
   $K/kernelvec.o \
   $K/plic.o \
-  $K/virtio_disk.o
+  $K/virtio_disk.o \
+  $K/swap_disk.o    # ← must be here, after virtio_disk.o, because it depends on virtio_disk.o
 
 # riscv64-unknown-elf- or riscv64-linux-gnu-
 # perhaps in /opt/riscv/bin
@@ -145,22 +146,35 @@ UPROGS=\
 	$U/_logstress\
 	$U/_forphan\
 	$U/_dorphan\
-	$U/_PA_3_1\
-	$U/_PA_3_2\
-	$U/_PA_3_3\
-	$U/_PA_3_4\
-	$U/_PA_3_5\
-	$U/_PA_3_6\
-	$U/_PA_3_7\
-	$U/_PA_3_8\
-	$U/_A\
-	$U/_B\
-	$U/_C\
-	$U/_D\
-	$U/_E\
-	$U/_F\
-	$U/_G\
-	$U/_runtests\
+	$U/_PA4_1\
+	$U/_PA4_2\
+	$U/_PA4_3\
+	$U/_PA4_4\
+	$U/_PA4_5\
+	$U/_PA4_6\
+	$U/_PA4_7\
+	$U/_PA4_8\
+	$U/_PA4_run
+# 	$U/_PA_3_1\
+# 	$U/_PA_3_2\
+# 	$U/_PA_3_3\
+# 	$U/_PA_3_4\
+# 	$U/_PA_3_5\
+# 	$U/_PA_3_6\
+# 	$U/_PA_3_7\
+# 	$U/_PA_3_8\
+# 	$U/_A\
+# 	$U/_B\
+# 	$U/_C\
+# 	$U/_D\
+# 	$U/_E\
+# 	$U/_F\
+# 	$U/_G\
+# 	$U/_runtests\
+# 	$U/_PA31\
+# 	$U/_PA32\
+# 	$U/_PA33\
+# 	$U/_PA34
 # 	$U/_A1\
 # 	$U/_A2\
 # 	$U/_B1\

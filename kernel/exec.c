@@ -137,11 +137,11 @@ int kexec(char *path, char **argv)
   p->trapframe->sp = sp;         // initial stack pointer
   proc_freepagetable(oldpagetable, oldsz);
 
-  p->page_faults = 0;
+  // p->page_faults = 0;
   p->pages_evicted = 0;
   p->pages_swapped_in = 0;
   p->pages_swapped_out = 0;
-  p->resident_pages = 0;
+  // p->resident_pages = 0;
 
   return argc; // this ends up in a0, the first argument to main(argc, argv)
 

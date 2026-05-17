@@ -129,4 +129,8 @@ struct proc
   int pages_swapped_in;        // Total pages swapped in
   int pages_swapped_out;       // Total pages swapped out
   int resident_pages;          // Current number of resident pages
+  // Disk stats
+  int disk_reads;              // Total disk reads
+  int disk_writes;             // Total disk writes
+  int avg_disk_latency;        // Average disk latency
 };

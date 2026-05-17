@@ -33,6 +33,8 @@ int getchildsyscount(int pi);
 int getlevel(void);
 int getmlfqinfo(int, struct mlfqinfo*);
 int getvmstats(int, struct vmstats *);
+int setdisksched(int policy);
+int setraidmode(int mode);
 
 // ulib.c
 int stat(const char*, struct stat*);

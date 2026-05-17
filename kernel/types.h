@@ -26,6 +26,11 @@ struct vmstats {
   int pages_swapped_in;
   int pages_swapped_out;
   int resident_pages;
+
+  // NEW
+  int disk_reads;
+  int disk_writes;
+  int avg_disk_latency;
 };
 
 #endif // TYPES_H

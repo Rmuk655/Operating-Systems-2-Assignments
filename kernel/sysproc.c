@@ -6,6 +6,7 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "vm.h"
+#include "swap_disk.h" 
 
 extern struct proc proc[NPROC];
 extern struct spinlock wait_lock;
@@ -129,6 +130,9 @@ uint64 sys_getvmstats()
       info.pages_swapped_in = pi->pages_swapped_in;
       info.pages_swapped_out = pi->pages_swapped_out;
       info.resident_pages = pi->resident_pages;
+      info.disk_reads = pi->disk_reads;
+      info.disk_writes = pi->disk_writes;
+      info.avg_disk_latency = pi->avg_disk_latency;
       release(&pi->lock);
       copyout(myproc()->pagetable, uaddr, (char *)&info, sizeof(info));
       return 0;
@@ -136,6 +140,24 @@ uint64 sys_getvmstats()
     release(&pi->lock);
   }
   return -1;
+}
+
+uint64 sys_setdisksched()
+{
+  int policy;
+  argint(0, &policy);
+  if (policy != DISK_SCHED_FCFS && policy != DISK_SCHED_SSTF)
+  {
+    return -1;
+  }
+  return setdisksched(policy);
+}
+
+uint64 sys_setraidmode(void)
+{
+    int mode;
+    argint(0, &mode);
+    return setraidmode(mode);
 }
 
 uint64
@@ -170,18 +192,23 @@ sys_wait(void)
 uint64
 sys_sbrk(void)
 {
+  // printf("Working 2!\n");
   uint64 addr;
   int t;
   int n;
 
+  // printf("Working 3!\n");
   argint(0, &n);
   argint(1, &t);
   addr = myproc()->sz;
 
+  // printf("Working 4!\n");
   if (t == SBRK_EAGER || n < 0)
   {
+    // printf("Working 5!\n");
     if (growproc(n) < 0)
     {
+      // printf("Working !\n");
       return -1;
     }
   }

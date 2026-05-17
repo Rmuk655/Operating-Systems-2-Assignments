@@ -62,6 +62,7 @@ void kinit(void);
 void frametable_alloc(uint64 pa, struct proc *p, uint64 va);
 void frametablefree(uint64 pa);
 uint64 clock_evict(void);
+void tlb_flush_all(void);
 int swapout(pagetable_t pt, uint64 va);
 void swapin(uint64 pa, int swap_idx);
 void swap_free(int swap_idx);
@@ -144,6 +145,18 @@ void argaddr(int, uint64 *);
 int fetchstr(uint64, char *, int);
 int fetchaddr(uint64, uint64 *);
 void syscall();
+
+// swap_disk.c
+
+void swap_disk_init(void);
+// void swap_disk_reset_stats(void);
+void swap_out_page(char *page_data, int swap_slot);
+void swap_in_page(char *page_data, int swap_slot, int raid_mode_override);
+int  setdisksched(int policy);
+int  setraidmode(int mode);
+int  disk_get_avg_latency(void);
+int  disk_get_total_requests(void);
+void swap_disk_free_slot(int swap_slot);
 
 // trap.c
 extern uint ticks;

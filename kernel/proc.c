@@ -269,9 +269,11 @@ void userinit(void)
 // Grow or shrink user memory by n bytes.
 int growproc(int n)
 {
+  // printf("Working 6!\n");
   uint64 sz;
   struct proc *p = myproc();
-  uint64 old_sz = p->sz;
+  // printf("Working 7!\n");
+  // uint64 old_sz = p->sz;
 
   sz = p->sz;
   if (n > 0)
@@ -280,16 +282,22 @@ int growproc(int n)
     {
       return -1;
     }
+    // printf("Working 8!\n");
     if ((sz = uvmalloc(p->pagetable, sz, sz + n, PTE_W)) == 0)
     {
+      // printf("Working !\n");
       return -1;
     }
-    p->resident_pages += (sz - old_sz) / PGSIZE;
+    // printf("Working !\n");
+    // p->resident_pages += (sz - old_sz) / PGSIZE;
   }
   else if (n < 0)
   {
+    // printf("Working 7b!\n");
     sz = uvmdealloc(p->pagetable, sz, sz + n);
+    // printf("Working !\n");
   }
+  // printf("Working 7c!\n");
   p->sz = sz;
   return 0;
 }
@@ -481,7 +489,7 @@ void scheduler(void)
     // turned off; enable them to avoid a deadlock if all
     // processes are waiting. Then turn them back off
     // to avoid a possible race between an interrupt
-    // and wfi.
+    // and wfi (wait for interrupt).
     intr_on();
     intr_off();
 
@@ -572,7 +580,7 @@ void yield(void)
   struct proc *p = myproc();
   acquire(&p->lock);
   p->state = RUNNABLE;
-  sched();
+  sched();  
   release(&p->lock);
 }
 

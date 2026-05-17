@@ -35,6 +35,10 @@ kvmmake(void)
   // virtio mmio disk interface
   kvmmap(kpgtbl, VIRTIO0, VIRTIO0, PGSIZE, PTE_R | PTE_W);
 
+  // ADD THIS LINE TO MAP THE CLINT (For cross-core TLB shootdown interrupts)
+  // CLINT base is 0x2000000, size is 0x10000
+  kvmmap(kpgtbl, 0x2000000L, 0x2000000L, 0x10000, PTE_R | PTE_W);
+  
   // PLIC
   kvmmap(kpgtbl, PLIC, PLIC, 0x4000000, PTE_R | PTE_W);
 
@@ -195,6 +199,7 @@ uvmcreate()
 // Optionally free the physical memory.
 void uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
 {
+  // printf("Working 17!\n");
   uint64 a;
   pte_t *pte;
 
@@ -203,6 +208,7 @@ void uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
 
   for (a = va; a < va + npages * PGSIZE; a += PGSIZE)
   {
+    // printf("Working 18! a = %ld\n", a);
     if ((pte = walk(pagetable, a, 0)) == 0) // leaf page table entry allocated?
       continue;
 
@@ -212,25 +218,35 @@ void uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
       { // It was swapped out to disk
         // if (do_free)
         // {
+        // printf("Working 19!\n");
         int swap_idx = (*pte) >> 10;
         swap_free(swap_idx); // Free the swap slot on disk
         *pte = 0;            // Clear the PTE completely
+        sfence_vma();
+        // printf("Working 20!\n");
         continue;
         // }
       }
+      // printf("Working 21!\n");
       // *pte = 0;
-      continue; // <-- CRITICAL: Move this outside the PTE_S check!
+      // continue; // <-- CRITICAL: Move this outside the PTE_S check!
     }
-
+    // printf("Working 22!\n");
     // If we make it here, PTE_V is 1 (the page is in RAM)
     if (do_free)
     {
+      // printf("Working 23!\n");
       uint64 pa = PTE2PA(*pte);
       frametablefree(pa);
+      // printf("Working 24!\n");
       kfree((void *)pa);
+      sfence_vma();
+      // printf("Working 25!\n");
     }
     *pte = 0;
+    // printf("Working 26!\n");
   }
+  // printf("Working 27!\n");
 }
 
 // Allocate PTEs and physical memory to grow a process from oldsz to
@@ -238,26 +254,37 @@ void uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
 uint64
 uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz, int xperm)
 {
+  // printf("Working 9!\n");
   char *mem;
   uint64 a;
 
   if (newsz < oldsz)
     return oldsz;
 
+  // printf("Working 10!\n");
   oldsz = PGROUNDUP(oldsz);
   for (a = oldsz; a < newsz; a += PGSIZE)
   {
+    // printf("Working 11!\n");
     mem = (char *)get_frame();
+    // printf("Working 12!\n");
     if (mem == 0)
     {
+      // printf("Working 13!\n");
       uvmdealloc(pagetable, a, oldsz);
+      // printf("Working !\n");
       return 0;
     }
+    // printf("Working 13!\n");
     memset(mem, 0, PGSIZE);
+    // printf("Working 13.1!\n");
     if (mappages(pagetable, a, PGSIZE, (uint64)mem, PTE_R | PTE_U | xperm) != 0)
     {
+      // printf("Working 13.2!\n");
       kfree(mem);
+      // printf("Working 13.3!\n");
       uvmdealloc(pagetable, a, oldsz);
+      // printf("Working 13.4!\n");
       return 0;
     }
     frametable_alloc((uint64)mem, myproc(), a);
@@ -272,13 +299,17 @@ uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz, int xperm)
 uint64
 uvmdealloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz)
 {
+  // printf("Working 14!\n");
   if (newsz >= oldsz)
     return oldsz;
 
+  // printf("Working 15!\n");
   if (PGROUNDUP(newsz) < PGROUNDUP(oldsz))
   {
     int npages = (PGROUNDUP(oldsz) - PGROUNDUP(newsz)) / PGSIZE;
+    // printf("Working 16!\n");
     uvmunmap(pagetable, PGROUNDUP(newsz), npages, 1);
+    // printf("Working!\n");
   }
 
   return newsz;
@@ -352,8 +383,8 @@ int uvmcopy(pagetable_t old, pagetable_t new, uint64 sz, struct proc *child)
     pa = PTE2PA(*pte);
     flags = PTE_FLAGS(*pte);
     mem = (char *)get_frame();
-    if ((mem = kalloc()) == 0)
-    // if (mem == 0)
+    // if ((mem = kalloc()) == 0)
+    if (mem == 0)
       goto err;
     memmove(mem, (char *)pa, PGSIZE);
     if (mappages(new, i, PGSIZE, (uint64)mem, flags) != 0)
@@ -512,9 +543,16 @@ vmfault(pagetable_t pagetable, uint64 va, int read)
 {
   uint64 mem;
   struct proc *p = myproc();
+
+  if (va >= MAXVA || (p && va >= p->sz))
+  {
+    return 0;
+  }
+
   pte_t *pte = walk(pagetable, va, 0);
 
-  if (va >= p->sz){
+  if (va >= p->sz)
+  {
 
     return 0;
   }
@@ -528,7 +566,7 @@ vmfault(pagetable_t pagetable, uint64 va, int read)
   // acquire(&p->lock);
   p->page_faults++;
   // release(&p->lock);
-  
+
   if (pte != 0 && (*pte & PTE_S))
   {
     int swap_idx = (*pte) >> 10;
@@ -541,14 +579,18 @@ vmfault(pagetable_t pagetable, uint64 va, int read)
     }
     // printf("vmfault swapin pid=%d va=%ld pa=%p\n", p->pid, va, (void *)pa);
     // *pte = PA2PTE(pa) | PTE_FLAGS(*pte);
-    *pte = PA2PTE(pa) | (PTE_FLAGS(*pte) & ~PTE_S) | PTE_V;
     swapin(pa, swap_idx);
+    *pte = PA2PTE(pa) | (PTE_FLAGS(*pte) & ~PTE_S) | PTE_V;
+    // int flags = PTE_U | PTE_R | PTE_W | PTE_X;
+    // *pte = PA2PTE(pa) | flags | PTE_V;
+    sfence_vma();
+    // swapin(pa, swap_idx);
     p->pages_swapped_in++; // Increment the process's swapped in counter
     frametable_alloc(pa, p, va);
     return (uint64)pa;
   }
   // printf("Hello\n");
-  
+
   mem = (uint64)get_frame();
   if (mem == 0)
   {
@@ -588,15 +630,20 @@ void *get_frame()
 {
   void *pa;
   acquire(&framelock);
-  if (active_frames < MAX_FRAMES)
+  int count = active_frames;
+  release(&framelock);
+
+  if (count < MAX_FRAMES)
   {
-    active_frames++;
-    release(&framelock);
+    // active_frames++;
+    // release(&framelock);
     pa = kalloc();
+    if (pa == 0) pa = (void *)clock_evict();
   }
-  else{
-    release(&framelock);
-    pa = (void*) clock_evict();
+  else
+  {
+    // release(&framelock);
+    pa = (void *)clock_evict();
   }
   return pa;
 }
